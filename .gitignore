@@ -1,0 +1,86 @@
+# Composer dependencies
+src/vendor/
+src/composer.phar
+src/composer.lock
+
+# Environment files
+src/.env
+src/.env.*
+!src/.env.example
+
+# bootstrap cache
+src/bootstrap/cache/*.php
+!src/bootstrap/cache/.gitignore
+
+# storage (keep directory skeleton)
+src/storage/logs/*
+!src/storage/logs/.gitignore
+src/storage/app/*
+!src/storage/app/.gitignore
+src/storage/app/public/*
+!src/storage/app/public/.gitignore
+src/storage/framework/cache/*
+!src/storage/framework/cache/.gitignore
+src/storage/framework/sessions/*
+!src/storage/framework/sessions/.gitignore
+src/storage/framework/views/*
+!src/storage/framework/views/.gitignore
+src/storage/framework/testing/*
+!src/storage/framework/testing/.gitignore
+
+# PID files (Workerman / Supervisord)
+src/storage/*.pid
+
+# PHPUnit
+src/.phpunit.result.cache
+src/.phpunit.cache/
+
+# PHPStan
+src/phpstan-baseline.neon
+
+# PHP CS Fixer
+.php-cs-fixer.cache
+.php_cs.cache
+
+# Docker
+docker/.env
+docker/.env.*
+!docker/.env.example
+docker/mysql/data/
+docker/redis/data/
+
+# Node / Front-end (if ever added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+build/
+
+# IDE / Editors
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.history/
+.fleet/
+nbproject/
+.ai/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Misc
+*.log
+*.swp
+*.swo
+*~
+.cache/

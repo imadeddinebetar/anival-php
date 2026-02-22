@@ -1,0 +1,138 @@
+<?php
+/**
+ * WebSocket Server (Workerman)
+ * 
+ * This server handles real-time WebSocket connections using Workerman
+ * Install: composer require workerman/workerman
+ */
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use Workerman\Worker;
+use Workerman\Connection\TcpConnection;
+use Dotenv\Dotenv;
+use Core\Container\Internal\Application;
+use Core\WebSocket\Internal\WebSocketHandler;
+
+// Load environment variables
+if (file_exists(__DIR__ . '/../.env')) {
+    $dotenv = Dotenv::createImmutable(__DIR__ . '/..');
+    $dotenv->load();
+}
+
+// Create and boot application
+/** @var Application $app */
+$app = require __DIR__ . '/../bootstrap/app.php';
+
+// Load configuration into the container before registering providers
+$app->loadConfiguration();
+
+// Register service providers
+$config = require $app->basePath('config/app.php');
+foreach ($config['providers'] as $provider) {
+    if (class_exists($provider)) {
+        $app->register($provider);
+    }
+}
+
+// Boot providers
+$app->boot();
+
+// Create a Worker with websocket protocol, listening on specified port
+$port = config('websocket.port', 6001);
+$ws_worker = new Worker("websocket://0.0.0.0:$port");
+
+// Set log and pid files
+Worker::$logFile = $app->storagePath('logs/workerman.log');
+Worker::$pidFile = $app->storagePath('workerman.pid');
+
+// Set the name for the worker
+$ws_worker->name = config('websocket.name', 'AnivalWebSocket');
+
+// Worker processes count
+$ws_worker->count = config('websocket.count', 4);
+
+// Initialize Handler
+$handler = new WebSocketHandler($app);
+
+// Bind callbacks
+$ws_worker->onWorkerStart = [$handler, 'onWorkerStart'];
+$ws_worker->onConnect = [$handler, 'onConnect'];
+$ws_worker->onMessage = [$handler, 'onMessage'];
+$ws_worker->onClose = [$handler, 'onClose'];
+
+// Cleanup on start
+if (isset($argv[1]) && in_array($argv[1], ['start', 'restart'])) {
+    try {
+        if (class_exists(\Redis::class)) {
+            $redis_cleanup = new \Redis();
+            $host = config('websocket.redis.host', 'redis');
+            $port = config('websocket.redis.port', 6379);
+            $redis_cleanup->connect($host, $port);
+            
+            $user = config('websocket.redis.username');
+            $pass = config('websocket.redis.password');
+            if ($pass) {
+                $redis_cleanup->auth($user ? [$user, $pass] : $pass);
+            }
+
+            $redis_cleanup->del('websocket:connections');
+            // Allow rooms to persist? Task says "Persist rooms in Redis so they survive worker restarts".
+            // So we do NOT flush rooms or global history.
+            // But we should probably clean up "connections" because TCP connections surely died if server restarted.
+        }
+    } catch (\Throwable $e) {
+        // Ignore
+    }
+}
+
+// Custom command to show application-level connections
+if (isset($argv[1]) && $argv[1] === 'app:connections') {
+    if (!class_exists(\Redis::class)) {
+        echo "Error: Redis extension is required for this command.\n";
+        exit(1);
+    }
+
+    try {
+        $redis = new \Redis();
+         $host = config('websocket.redis.host', 'redis');
+         $port = config('websocket.redis.port', 6379);
+        $redis->connect($host, $port);
+        
+        $user = config('websocket.redis.username');
+        $pass = config('websocket.redis.password');
+        if ($pass) {
+            $redis->auth($user ? [$user, $pass] : $pass);
+        }
+
+        $connections = $redis->hGetAll('websocket:connections');
+        
+        echo "\nAnival WebSocket Application Connections\n";
+        echo str_repeat('=', 80) . "\n";
+        printf("%-10s %-15s %-15s %-20s %-10s\n", "CID", "User ID", "IP", "Rooms", "PID");
+        echo str_repeat('-', 80) . "\n";
+        
+        if (empty($connections)) {
+            echo "No active application connections.\n";
+        } else {
+            foreach ($connections as $cid => $json) {
+                $data = json_decode($json, true);
+                printf("%-10s %-15s %-15s %-20s %-10s\n", 
+                    $cid, 
+                    $data['userId'] ?: 'Anonymous', 
+                    $data['ip'], 
+                    implode(',', $data['rooms'] ?? []) ?: '-', 
+                    $data['pid']
+                );
+            }
+        }
+        echo str_repeat('=', 80) . "\n";
+        echo "Total App Connections: " . count($connections) . "\n\n";
+    } catch (\Exception $e) {
+        echo "Error fetching connections: " . $e->getMessage() . "\n";
+    }
+    exit(0);
+}
+
+// Run all workers
+Worker::runAll();

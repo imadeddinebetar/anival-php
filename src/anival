@@ -1,0 +1,14 @@
+#!/usr/bin/env php
+<?php
+
+require __DIR__ . '/vendor/autoload.php';
+
+use Core\Console\Contracts\ConsoleKernelInterface;
+
+$app = require __DIR__ . '/bootstrap/app.php';
+$app->bootstrap();
+
+$kernel = $app->get(ConsoleKernelInterface::class);
+$status = $kernel->handle($argv);
+
+exit($status);

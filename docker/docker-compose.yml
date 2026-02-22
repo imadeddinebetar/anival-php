@@ -1,0 +1,133 @@
+services:
+  # PHP-FPM Application
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ../src:/var/www/html
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_USERNAME=${REDIS_USERNAME}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - WEBSOCKET_HOST=${WEBSOCKET_HOST}
+      - WEBSOCKET_PORT=${WEBSOCKET_PORT}
+    depends_on:
+      - redis
+      - websocket
+      - worker
+    networks:
+      - anival_php
+      - mysql_local
+
+  # Nginx Web Server
+  web:
+    image: nginx:alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ../src:/var/www/html
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - anival_php
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+      - ./redis/users.acl:/usr/local/etc/redis/users.acl
+    networks:
+      - anival_php
+    ports: # Dev only, remove in production
+      - "6379:6379"
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--user", "${REDIS_USERNAME}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Queue Workers (Supervisor)
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: worker
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ../src:/var/www/html
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_USERNAME=${REDIS_USERNAME}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    networks:
+      - anival_php
+    command: bash -c "mkdir -p /var/www/html/storage/logs && /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf"
+
+  # WebSocket Server
+  websocket:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: websocket
+    restart: unless-stopped
+    working_dir: /var/www/html
+    ports:
+      - "6001:6001"
+    volumes:
+      - ../src:/var/www/html
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_USERNAME=${REDIS_USERNAME}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    networks:
+      - anival_php
+    command: bash -c "mkdir -p /var/www/html/storage/logs && php bin/websocket-server.php start"
+
+  # Test Runner
+  test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: test
+    working_dir: /var/www/html
+    volumes:
+      - ../src:/var/www/html
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_USERNAME=${REDIS_USERNAME}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - anival_php
+    profiles:
+      - test
+    entrypoint: php vendor/bin/phpunit
+
+networks:
+  anival_php:
+    driver: bridge
+  mysql_local:
+    external: true
+
+volumes:
+  redis_data:
+    driver: local

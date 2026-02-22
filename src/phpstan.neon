@@ -1,0 +1,14 @@
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    level: 6
+    paths:
+        - core
+        - bootstrap/Providers
+    excludePaths:
+        - core/Support/helpers.php
+        - core/Console/Commands
+    scanFiles:
+        - core/Support/helpers.php
+    treatPhpDocTypesAsCertain: false

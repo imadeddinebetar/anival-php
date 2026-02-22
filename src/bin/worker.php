@@ -1,0 +1,132 @@
+<?php
+
+/**
+ * Queue Worker
+ * 
+ * Command-line worker for processing background jobs
+ * Usage: php worker.php queue:work [--queue=default] [--sleep=3] [--tries=3]
+ */
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use Core\Queue\Internal\Queue;
+use Core\Queue\Internal\Worker;
+
+// Parse command line arguments
+$args = getopt('', ['queue:', 'sleep:', 'tries:', 'timeout:', 'memory:', 'connection:']);
+
+$config = [
+    'sleep' => (int) ($args['sleep'] ?? 3),
+    'tries' => (int) ($args['tries'] ?? 3),
+    'timeout' => (int) ($args['timeout'] ?? 60),
+    'memory' => (int) ($args['memory'] ?? 128),
+];
+
+$queueName = $args['queue'] ?? 'default';
+
+// Bootstrap application
+$app = require __DIR__ . '/../bootstrap/app.php';
+
+// Load configuration into the container before registering providers
+$app->loadConfiguration();
+
+// Register services
+$app->register(\Bootstrap\Providers\LogServiceProvider::class);
+$app->register(\Bootstrap\Providers\QueueServiceProvider::class);
+$app->register(\Bootstrap\Providers\EventServiceProvider::class);
+
+// Check command
+$command = $argv[1] ?? null;
+
+switch ($command) {
+    case 'queue:work':
+        $worker = new Worker($app, $config);
+        $connection = $args['connection'] ?? 'default';
+        $worker->work($connection, $queueName);
+        break;
+
+    case 'queue:stats':
+        $queue = $app->get(Queue::class);
+
+        $stats = $queue->stats($args['queue'] ?? 'default');
+
+        echo "Queue Statistics\n";
+        echo str_repeat('=', 50) . "\n";
+        echo "Queue: {$stats['queue']}\n";
+        echo "Pending: {$stats['pending']}\n";
+        echo "Delayed: {$stats['delayed']}\n";
+        echo "Processing: {$stats['processing']}\n";
+        echo "Failed: {$stats['failed']}\n";
+        break;
+
+    case 'queue:clear':
+        $queue = $app->get(Queue::class);
+
+        $queue->clear($args['queue'] ?? 'default');
+        echo "Queue cleared successfully\n";
+        break;
+
+    case 'queue:failed':
+        $queue = $app->get(Queue::class);
+
+        $failed = $queue->getFailedJobs();
+
+        echo "Failed Jobs (" . count($failed) . ")\n";
+        echo str_repeat('=', 50) . "\n";
+
+        foreach ($failed as $job) {
+            echo "ID: {$job['id']}\n";
+            echo "Job: {$job['job']}\n";
+            echo "Attempts: {$job['attempts']}\n";
+            echo "Error: {$job['error']}\n";
+            echo "Failed at: " . date('Y-m-d H:i:s', $job['failed_at']) . "\n";
+            echo str_repeat('-', 50) . "\n";
+        }
+        break;
+
+    case 'queue:retry':
+        $queue = $app->get(Queue::class);
+
+        if (isset($args['id'])) {
+            $queue->retry($args['id'], $args['queue'] ?? 'default');
+            echo "Job {$args['id']} retried successfully\n";
+        } elseif (isset($argv[2]) && $argv[2] === '--all') {
+            $queue->retryAll($args['queue'] ?? 'default');
+            echo "All failed jobs retried successfully\n";
+        } else {
+            echo "Usage: php worker.php queue:retry --id=<job_id> [--queue=default]\n";
+            echo "       php worker.php queue:retry --all [--queue=default]\n";
+            exit(1);
+        }
+        break;
+
+    case 'schedule:run':
+        echo "Scheduler started\n";
+
+        $schedule = new \Core\Console\Scheduling\Schedule();
+
+        // Define schedule
+        // In a real app this would be loaded from Kernel or ConsoleServiceProvider
+        $schedule->command('reports:generate')->daily();
+
+        while (true) {
+            $events = $schedule->dueEvents($app);
+
+            foreach ($events as $event) {
+                echo "[" . date('Y-m-d H:i:s') . "] Running scheduled task\n";
+                $event->run($app);
+            }
+
+            sleep(60);
+        }
+        break;
+
+    default:
+        echo "Available commands:\n";
+        echo "  queue:work [--queue=default] [--sleep=3] [--tries=3]\n";
+        echo "  queue:stats [--queue=default]\n";
+        echo "  queue:clear [--queue=default]\n";
+        echo "  queue:failed\n";
+        echo "  queue:retry --id=<job_id> [--queue=default]\n";
+        echo "  schedule:run\n";
+}

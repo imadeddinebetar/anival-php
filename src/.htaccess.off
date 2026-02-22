@@ -1,0 +1,62 @@
+# Enable URL rewriting
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+    
+    # 1. Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # 2. Handle X-XSRF-Token Header
+    RewriteCond %{HTTP:x-xsrf-token} .
+    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # 3. Redirect /folder_name to /folder_name/
+    RewriteCond %{REQUEST_URI} ^/folder_name$
+    RewriteRule ^(.*)$ /folder_name/ [R=301,L]
+
+    # 4. Route everything to the 'public' directory
+    RewriteCond %{REQUEST_URI} !^/folder_name/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+
+    # 5. Standard Framework Routing
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^public/(.*)$ public/index.php [L,QSA]
+</IfModule>
+
+# PHP Configuration
+<IfModule mod_php.c>
+    php_value max_execution_time 1800
+    php_value max_input_time 300
+    php_value memory_limit 512M
+    php_value post_max_size 100M
+    php_value upload_max_filesize 100M
+</IfModule>
+
+# Block access to sensitive files
+<FilesMatch "^\.env$|^\.htaccess$|^composer\.(json|lock)$">
+    Deny from all
+</FilesMatch>
+
+# Security Headers with Content Security Policy
+<IfModule mod_headers.c>
+    Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://maxst.icons8.com; font-src 'self' https://fonts.gstatic.com https://maxst.icons8.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# Cache Control
+<FilesMatch "\.(js|css|map|png|jpg|jpeg|svg|webp|gif|ico|avif|ttf|woff|woff2)$">
+  Header set Cache-Control "public, max-age=31536000, immutable"
+</FilesMatch>
+
+<FilesMatch "\.(html|php)$">
+  Header set Cache-Control "no-cache, must-revalidate"
+</FilesMatch>

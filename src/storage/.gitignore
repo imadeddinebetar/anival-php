@@ -1,0 +1,5 @@
+/logs
+/cache
+/framework
+*.log
+*.pid
