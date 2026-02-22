@@ -1,4 +1,4 @@
-# Anival PHP
+# Anival PHP 2.x
 
 A custom PHP framework skeleton built on top of modern PHP standards and battle-tested open-source libraries. Designed for building robust, scalable web applications and APIs with a clean, expressive developer experience.
 
